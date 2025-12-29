@@ -19,11 +19,11 @@ jobs:
         run: |
           cd services/django_app
           pip install -r requirements.txt
-          pytest -q
+          python -m pytest -q
 
       - name: Install + test FastAPI
         run: |
           cd services/fastapi_app
           pip install -r requirements.txt
-          pytest -q
+          python -m pytest -q
 
