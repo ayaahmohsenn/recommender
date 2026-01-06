@@ -1,7 +1,9 @@
 from fastapi import FastAPI, Query
-from app.db import fetch_published_items
+import app.db as db
 from app.schemas import EventsIn, EventsOut
 from app.events_repo import claim_idempotency_key, insert_events
+from app.ranking import recency_score, blend_score
+from app.cache import cache_get, cache_set
 
 app = FastAPI(title="Feed Recommender API")
 
@@ -10,8 +12,31 @@ def health():
     return {"status": "ok", "service": "fastapi"}
 
 @app.get("/feed")
-def feed(limit: int = Query(30, ge=1, le=100)):
-    return {"items": fetch_published_items(limit=limit)}
+def feed(
+    limit: int = Query(30, ge=1, le=100),
+    user_id: str | None = None,
+    nocache: int = 0,
+):
+    cache_key = f"feed:v1:user={user_id or 'anon'}:limit={limit}"
+    if not nocache:
+        cached = cache_get(cache_key)
+        if cached:
+            return cached
+
+    items = db.fetch_published_items(limit=200)
+    pop = db.fetch_popular_item_scores(hours=24, limit=500)
+
+    scored = []
+    for it in items:
+        r = recency_score(it["created_at"])
+        p = pop.get(it["id"], 0.0)
+        score = blend_score(r, p)
+        scored.append({**it, "score": score, "recency": r, "popularity": p})
+
+    scored.sort(key=lambda x: x["score"], reverse=True)
+    resp = {"items": scored[:limit]}
+    cache_set(cache_key, resp, ttl_seconds=10)
+    return resp
 
 @app.post("/events", response_model=EventsOut)
 def post_events(payload: EventsIn):

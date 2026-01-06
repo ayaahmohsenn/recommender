@@ -61,3 +61,12 @@ services:
       retries: 20
     volumes:
       - ./services/fastapi_app:/app
+
+  trainer:
+    build:
+      context: ./services/trainer
+    environment:
+      DATABASE_URL: postgresql://app:app@postgres:5432/app
+    depends_on:
+      postgres:
+        condition: service_healthy
